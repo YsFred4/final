@@ -1,0 +1,362 @@
+<html>
+<head>
+    <title>CSCI-510: Assn 5 - Transformation</title>
+    
+    <!-- wireframe vertex shader -->
+    <script id="wireframe-V" type="x-shader/x-vertex">
+        #version 300 es
+        in vec3 aVertexPosition;
+        in vec3 aBary;
+        
+        // Model transform
+        uniform vec3 theta;
+        uniform vec3 mTrans;
+        
+        // camera params
+        uniform mat4 viewT;
+        uniform mat4 projT;
+        
+        // send Barys to fragment shader
+        out vec3 vbc;
+
+        void main()
+        {
+            // Compute the sines and cosines of each rotation
+            // about each axis
+            vec3 angles = radians( theta );
+            vec3 c = cos( angles );
+            vec3 s = sin( angles );
+
+            // rotation matrices
+            mat4 rx = mat4 ( 1.0,  0.0,  0.0,  0.0,
+                             0.0,  c.x,  s.x,  0.0,
+                             0.0, -s.x,  c.x,  0.0,
+                             0.0,  0.0,  0.0,  1.0 );
+
+            mat4 ry = mat4 ( c.y,  0.0, -s.y,  0.0,
+                             0.0,  1.0,  0.0,  0.0,
+                             s.y,  0.0,  c.y,  0.0,
+                             0.0,  0.0,  0.0,  1.0 );
+
+            mat4 rz = mat4 ( c.z,  s.z,  0.0,  0.0,
+                            -s.z,  c.z,  0.0,  0.0,
+                             0.0,  0.0,  1.0,  0.0,
+                            0.0,  0.0,  0.0,  1.0 );
+                            
+            mat4 trans = mat4 ( 1.0,  0.0,  0.0,  0.0,
+                               0.0,   1.0,  0.0,  0.0,
+                               0.0,   0.0,  1.0,  0.0,
+                               mTrans.x,   mTrans.y,  mTrans.z,  1.0 );
+            
+            vec4 homo = vec4 (aVertexPosition, 1.0);
+            gl_Position = projT * viewT * trans * rz * ry * rx * homo;
+            vbc = aBary;
+        }
+    </script>
+
+     <!-- wireframe fragment Shader -->
+     <script id="wireframe-F" type="x-shader/x-fragment">
+         #version 300 es
+         precision mediump float;
+         
+         in vec3 vbc;
+
+         // Color that is the result of this shader
+         out vec4 fragColor;
+
+         void main(void) {
+             
+             fragColor = vec4 (0.5, 0.5, 0.5, 1.0 );
+           // if on the edge, draw black, otherwsie, draw grey
+           if (vbc.x < 0.02 || vbc.y < 0.02 || vbc.z < 0.02) {
+             fragColor = vec4 (1.0, 1.0, 1.0, 1.0);
+           }
+         }
+
+     </script>
+     
+     <!-- phong vertex shader -->
+     <script id="phong-V" type="x-shader/x-vertex">
+         #version 300 es
+         
+         // vertex attributes
+         in vec3 aVertexPosition;
+         in vec3 aNormal;
+         
+         // Model transform
+         uniform vec3 theta;
+         uniform vec3 mTrans;
+         
+         // camera params
+         uniform mat4 viewT;
+         uniform mat4 projT;
+         
+         // Light parameters
+         uniform vec3 lightPosition;   // in world coords
+         
+         // send vectors fragment shader
+         out vec3 N;
+         out vec3 L;
+         out vec3 V;
+
+         void main()
+         {
+             // Compute the sines and cosines of each rotation
+             // about each axis
+             vec3 angles = radians( theta );
+             vec3 c = cos( angles );
+             vec3 s = sin( angles );
+
+             // rotation matrices
+             mat4 rx = mat4 ( 1.0,  0.0,  0.0,  0.0,
+                              0.0,  c.x,  s.x,  0.0,
+                              0.0, -s.x,  c.x,  0.0,
+                              0.0,  0.0,  0.0,  1.0 );
+
+             mat4 ry = mat4 ( c.y,  0.0, -s.y,  0.0,
+                              0.0,  1.0,  0.0,  0.0,
+                              s.y,  0.0,  c.y,  0.0,
+                              0.0,  0.0,  0.0,  1.0 );
+
+             mat4 rz = mat4 ( c.z,  s.z,  0.0,  0.0,
+                             -s.z,  c.z,  0.0,  0.0,
+                              0.0,  0.0,  1.0,  0.0,
+                             0.0,  0.0,  0.0,  1.0 );
+                             
+             mat4 trans = mat4 ( 1.0,  0.0,  0.0,  0.0,
+                                0.0,   1.0,  0.0,  0.0,
+                                0.0,   0.0,  1.0,  0.0,
+                                mTrans.x,   mTrans.y,  mTrans.z,  1.0 );
+             
+             vec4 homo = vec4 (aVertexPosition, 1.0);
+             mat4 modelT = trans * rz * ry * rx;
+             gl_Position = projT * viewT * modelT * homo;
+             
+             // Phong calculations
+             // All calculations will be done in camera space
+             mat4 modelView = viewT * modelT;
+             mat4 normalmatrix = transpose(inverse (modelView));
+             
+             vec3 vcam = (modelView * vec4(aVertexPosition, 1.0)).xyz;
+             vec3 lcam = (viewT * vec4(lightPosition, 1.0)).xyz;
+             vec3 ncam = (normalmatrix * vec4(aNormal, 1.0)).xyz;
+             ncam = faceforward (ncam, vcam, ncam);
+             
+             // vectors to pass on to Fragment Shader
+             N = normalize (ncam);
+             L = normalize (lcam - vcam);
+             V = -normalize (vcam);
+         }
+     </script>
+
+      <!-- phong fragment Shader -->
+      <script id="phong-F" type="x-shader/x-fragment">
+          #version 300 es
+          precision mediump float;
+          
+          // calculated by vertex shader and passsed to fragment
+          in vec3 N;
+          in vec3 L;
+          in vec3 V;
+
+          // Light parameters
+          uniform vec3 ambientLight;
+          uniform vec3 lightColor;
+
+          // object color parameters
+          uniform vec3 baseColor;
+          uniform vec3 specHighlightColor;
+
+          // Phong parameters
+          uniform float ka;
+          uniform float kd;
+          uniform float ks;
+          uniform float ke;
+
+          // Color that is the result of this shader
+          out vec4 fragColor;
+
+          void main(void) {
+              
+              // individual components
+              vec3 R = normalize (reflect (-L, N));
+              
+              vec3 ambient = ka * ambientLight * baseColor;
+              vec3 diffuse = kd * lightColor * baseColor * max (dot(L, N), 0.0);
+              vec3 spec = ks * specHighlightColor * lightColor * pow (max(dot(R, V), 0.0), ke);
+              
+              // final color
+              fragColor = vec4 (ambient + diffuse + spec, 1.0);
+              //fragColor = vec4 (N, 1.0);
+              //fragColor = vec4 ( spec, 1.0);
+          }
+
+      </script>
+      
+      <script id="texture-V" type="x-shader/x-vertex">
+          #version 300 es
+          
+          // vertex attributes
+          in vec3 aVertexPosition;
+          in vec2 aUV;
+          
+          // Model transform
+          uniform vec3 theta;
+          uniform vec3 mTrans;
+          
+          // camera params
+          uniform mat4 viewT;
+          uniform mat4 projT;
+          
+          // outputs
+          out vec2 theUV;  // pass uv's onto the fragment shader
+
+          void main()
+          {
+              // Compute the sines and cosines of each rotation
+              // about each axis
+              vec3 angles = radians( theta );
+              vec3 c = cos( angles );
+              vec3 s = sin( angles );
+
+              // rotation matrices
+              mat4 rx = mat4 ( 1.0,  0.0,  0.0,  0.0,
+                               0.0,  c.x,  s.x,  0.0,
+                               0.0, -s.x,  c.x,  0.0,
+                               0.0,  0.0,  0.0,  1.0 );
+
+              mat4 ry = mat4 ( c.y,  0.0, -s.y,  0.0,
+                               0.0,  1.0,  0.0,  0.0,
+                               s.y,  0.0,  c.y,  0.0,
+                               0.0,  0.0,  0.0,  1.0 );
+
+              mat4 rz = mat4 ( c.z,  s.z,  0.0,  0.0,
+                              -s.z,  c.z,  0.0,  0.0,
+                               0.0,  0.0,  1.0,  0.0,
+                              0.0,  0.0,  0.0,  1.0 );
+                              
+              mat4 trans = mat4 ( 1.0,  0.0,  0.0,  0.0,
+                                 0.0,   1.0,  0.0,  0.0,
+                                 0.0,   0.0,  1.0,  0.0,
+                                 mTrans.x,   mTrans.y,  mTrans.z,  1.0 );
+              
+              vec4 homo = vec4 (aVertexPosition, 1.0);
+              mat4 modelT = trans * rz * ry * rx;
+              gl_Position = projT * viewT * modelT * homo;
+              
+              // pass uvs to fragment shader
+              theUV = aUV;
+          }
+      </script>
+      
+       <!-- fragment Shader -->
+       <script id="texture-F" type="x-shader/x-fragment">
+           #version 300 es
+
+           // Fragment shader for phong illumination model
+           // Per vertex shading
+
+           precision lowp float;
+               
+           // uvs passed in from vertex shader
+           in vec2 theUV;
+           
+           // the texture to use
+           uniform sampler2D theTexture;
+
+           // Color that is the result of this shader
+           out vec4 fragColor;
+
+           void main(void) {
+               fragColor = texture (theTexture, theUV);
+               //fragColor.x = theUV.x;
+               //fragColor.y = theUV.y;
+               //fragColor.z = 0.0;
+               //fragColor.a = 1.0;
+           }
+
+      </script>
+     
+     <!-- Matrix library and code for standard transformations -->
+     <script type="text/javascript" src="gl-matrix-min.js"></script>
+    
+    <!-- include the main final functions -->
+    <script type="text/javascript" src="./finalMain.js"></script>
+    
+    <!-- shape functions -->
+    <script type="text/javascript" src="./cgIShape.js"></script>
+    <script type="text/javascript" src="./myShapes-new-min.js"></script>
+    
+    <!-- keyboard functions -->
+    <script type="text/javascript" src="./event.js"></script>
+    
+    <!-- texture images -->
+     <img id="world-texture" src="pixar.jpg" style="display: none;"> </img>
+
+  <script type="text/javascript">
+    // Call init once the webpage has loaded
+    window.onload = init;
+  </script>
+</head>
+
+<body>
+  <h1>CSCI-510: Assn 5 - Transformation</h1>
+  <table>
+      <tr>
+          <td><canvas id="webgl-canvas" width="500" height="500">
+            Your browser does not support the HTML5 canvas element.
+          </canvas></td>
+          
+          <td>
+              <h3>Controls</h3>
+              
+              <table border="1">
+              <tbody>
+              <tr>
+              <td>x, y, z</td>
+              <td>Rotate the current shape forward about the x, y, or z axis</td>
+              </tr>
+              <tr>
+              <td>X, Y, Z</td>
+              <td>Rotate the current shape backward about the x, y, or z axis</td>
+              </tr>
+              <tr>
+              <td>1, c</td>
+              <td>Select the cube as the current shape (using current tessellation settings)</td>
+              </tr>
+              <tr>
+              <td>2, C</td>
+              <td>Select the cylinder as the current shape (using current tessellation settings)</td>
+              </tr>
+              <tr>
+              <td>3, n</td>
+              <td>Select the cone as the current shape (using current tessellation settings)</td>
+              </tr>
+              <tr>
+              <td>4, s</td>
+              <td>Select the sphere as the current shape (using current tessellation settings)</td>
+              </tr>
+              <tr>
+              <td>+, -</td>
+              <td>Increment/decrement the primary subdivision of the current shape by 1</td>
+              </tr>
+              <tr>
+              <td>=, _</td>
+              <td>Increment/decrement the secondary subdivision of the current shape by 1</td>
+              </tr>
+              <tr>
+              <td>r, R</td>
+              <td>Reset the figure to its original orientation</td>
+              </tr>
+              </tbody>
+              </table>
+              
+          </td>
+      </tr>
+  </table>
+  
+  
+
+</body>
+</html>
+
